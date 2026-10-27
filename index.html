@@ -71,6 +71,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 </header>
 
 <div id="form">
+<div style="display:flex;gap:10px;margin-bottom:14px"><button type="button" class="btn alt" id="svOpen" style="flex:1">Saved reports</button><button type="button" class="btn alt" id="newRep" style="flex:1">New report</button></div>
 <section>
 <h2>Client</h2><p class="hist" style="margin:0 0 8px">Pick a saved client, or type a new one. New clients are saved when you compile the report.</p>
 <select id="client" aria-label="Client"></select>
@@ -106,6 +107,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 
 <div class="bar"><div id="actions"></div></div>
 <div class="toast" id="toast"></div>
+<div class="sheet" id="sv"><div><b>Saved reports</b><input id="svq" type="search" placeholder="Search by client, date or technician"><div id="svl" style="max-height:52vh;overflow:auto"></div><small>Reports are stored only on this phone.</small><button class="btn alt" id="svX">Close</button></div></div>
 <div class="sheet" id="mgr"><div><b>Saved clients</b><div id="mlist" style="max-height:40vh;overflow:auto"></div><button class="btn" id="mExp">Export client list</button><label class="btn alt" style="text-align:center;margin:0;font-size:16px;color:var(--ink)">Import client list<input type="file" id="mImp" accept=".json,application/json" hidden></label><button class="btn alt" id="mX">Close</button></div></div>
 <div class="sheet" id="sheet"><div><b>Send report</b><small id="sz"></small><button class="btn" id="shZip">Share ZIP (report + photos)</button><button class="btn" id="shPdf" style="background:var(--navy)">Share PDF only</button><button class="btn alt" id="dlZip">Save ZIP to device</button><button class="btn alt" id="shX">Cancel</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -161,15 +163,15 @@ function paper(r){
  <p>Other problems: ${esc(r.outOther)||"–"}</p>
  <p><b>Pests observed:</b> ${r.pests.length?r.pests.map(esc).join(", "):"None"}${r.pestOther?" · Other: "+esc(r.pestOther):""}</p>
  <p><b>Recommendations:</b><br>${esc(r.recs).replace(/\n/g,"<br>")||"–"}</p>
- ${photos.length?`<p><b>Photos (${photos.length}):</b></p><div class="ph">${photos.map(x=>`<img src="${x.url}">`).join("")}</div>`:""}
+ ${curPhotos.length?`<p><b>Photos (${curPhotos.length}):</b></p><div class="ph">${curPhotos.map(x=>`<img src="${x.url}">`).join("")}</div>`:""}
  <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:28px;font-size:18px"><span><b>Technician:</b> ${esc(r.inspector)}</span><span><b>Date:</b> ${esc(r.date)}</span></div>`;
 }
-let current=null;
+let current=null,curPhotos=[],draftId=null,draftFac="";
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",2600)}
 function setActions(mode){
  $("actions").innerHTML=mode==="form"
  ?'<button class="btn" id="build">Compile report</button>'
- :'<button class="btn alt" id="back">Edit</button><button class="btn red" id="queueBtn">Send / share</button>';
+ :'<button class="btn alt" id="back">'+(mode==="saved"?"Back":"Edit")+'</button><button class="btn red" id="queueBtn">Send / share</button>';
  if(mode==="form")$("build").onclick=build;
  else{$("back").onclick=()=>show("form");$("queueBtn").onclick=()=>$("sheet").classList.add("open")}
 }
@@ -177,7 +179,11 @@ function show(m){$("form").style.display=m==="form"?"block":"none";$("report").s
 function build(){
  if(!f_name.value.trim()){toast("Enter the facility name");f_name.focus();return}
  if(!inspector.value){toast("Enter the technician name");inspector.focus();return}
- saveClient();current=collect();$("paper").innerHTML=paper(current);show("report");
+ saveClient();
+ const fac=f_name.value.trim().toLowerCase();if(draftId&&draftFac!==fac)draftId=null;
+ if(!draftId)draftId=Date.now();draftFac=fac;
+ curPhotos=photos.slice();current=collect();current.id=draftId;
+ $("paper").innerHTML=paper(current);show("report");saveReport(current,curPhotos);
 }
 const photos=[];
 function shrink(f){return new Promise(res=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res({url:c.toDataURL("image/jpeg",.8),w:c.width,h:c.height})};im.src=u})}
@@ -203,14 +209,14 @@ function makePdf(r){
  d.setFont("helvetica","bold").text("Pests observed: ",36,584);d.setFont("helvetica","normal").text((r.pests.join(", ")||"None")+(r.pestOther?"; Other: "+r.pestOther:""),110,584,{maxWidth:470});
  d.setFont("helvetica","bold").text("Recommendations:",36,604);d.setFont("helvetica","normal").text(r.recs||"",36,618,{maxWidth:540});
  d.setFontSize(13).setFont("helvetica","bold").text("Technician:",36,732);d.setFont("helvetica","normal").text(r.inspector||"",112,732);d.setFont("helvetica","bold").text("Date:",400,732);d.setFont("helvetica","normal").text(r.date||"",438,732);d.setDrawColor(0,105,180).setLineWidth(1).line(112,736,360,736).line(438,736,W-36,736);d.setDrawColor(0).setLineWidth(.6);d.setFontSize(8.5);
- photos.forEach(p=>{d.addPage();const k=Math.min(540/p.w,680/p.h);d.addImage(p.url,"JPEG",36,36,p.w*k,p.h*k)});
+ curPhotos.forEach(p=>{d.addPage();const k=Math.min(540/p.w,680/p.h);d.addImage(p.url,"JPEG",36,36,p.w*k,p.h*k)});
  return d;
 }
 const fname=r=>("Sanitation_"+r.facility.replace(/[^\w]+/g,"_")+"_"+r.date).slice(0,80);
 async function pack(){
  const r=current,b=fname(r),d=makePdf(r),z=new JSZip();
  const pdf=new File([d.output("blob")],b+".pdf",{type:"application/pdf"});
- z.file(b+".pdf",pdf);photos.forEach((p,i)=>z.file("photos/photo-"+(i+1)+".jpg",p.url.split(",")[1],{base64:true}));
+ z.file(b+".pdf",pdf);curPhotos.forEach((p,i)=>z.file("photos/photo-"+(i+1)+".jpg",p.url.split(",")[1],{base64:true}));
  return {pdf,zip:new File([await z.generateAsync({type:"blob"})],b+".zip",{type:"application/zip"})};
 }
 async function share(f){
@@ -221,7 +227,7 @@ async function save(f){
  try{const dl=await claude.use("downloads");if(dl){await dl.save({filename:f.name,data:f});toast("Saved "+f.name);return}}catch(e){if(e&&e.code==="declined")return}
  const a=document.createElement("a");a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();
 }
-const run=fn=>async()=>{try{toast("Preparing file…");const f=await pack();await fn(f)}catch(e){toast("Could not create the file")}};
+const run=fn=>async()=>{try{toast("Preparing file…");const f=await pack();await fn(f);if(current&&current.id===draftId)draftId=null}catch(e){toast("Could not create the file")}};
 $("shZip").onclick=run(f=>share(f.zip));$("shPdf").onclick=run(f=>share(f.pdf));$("dlZip").onclick=run(f=>save(f.zip));
 $("shX").onclick=()=>$("sheet").classList.remove("open");
 $("sheet").onclick=e=>{if(e.target.id==="sheet")$("sheet").classList.remove("open")};
@@ -235,6 +241,53 @@ $("mgr").onclick=e=>{if(e.target.id==="mgr")$("mgr").classList.remove("open");co
 $("mExp").onclick=()=>{if(!CLIENTS.length){toast("Nothing to export yet");return}share(new File([JSON.stringify(CLIENTS,null,1)],"BPC_clients.json",{type:"application/json"}))};
 $("mImp").onchange=async e=>{try{const a=JSON.parse(await e.target.files[0].text());let n=0;a.forEach(c=>{if(c&&c.name&&!CLIENTS.some(x=>x.name.toLowerCase()===c.name.toLowerCase())){CLIENTS.push({name:c.name,addr:c.addr||"",contact:c.contact||"",email:c.email||"",phone:c.phone||""});n++}});store.set("bpc_clients",CLIENTS);fillClients();mlist();toast(n+" clients added")}catch(x){toast("That is not a client list file")}e.target.value=""};
 CLIENTS=store.get("bpc_clients",[]);fillClients();
+
+// ---- Saved reports (stored on this phone, in IndexedDB) ----
+let dbp=null,metaCache=[];
+function idb(){return dbp||(dbp=new Promise((res,rej)=>{if(!window.indexedDB)return rej(new Error("no idb"));const q=indexedDB.open("bpc",1);q.onupgradeneeded=()=>{const d=q.result;d.createObjectStore("reports",{keyPath:"id"});d.createObjectStore("meta",{keyPath:"id"})};q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}))}
+function idbRun(stores,mode,fn){return idb().then(d=>new Promise((res,rej)=>{const t=d.transaction(stores,mode),out=fn(...stores.map(n=>t.objectStore(n)));t.oncomplete=()=>res(out&&out.result);t.onerror=t.onabort=()=>rej(t.error)}))}
+async function saveReport(r,ph){
+ try{
+  const meta={id:r.id,facility:r.facility,date:r.date,tech:r.inspector,photos:ph.length,savedAt:Date.now()};
+  await idbRun(["reports","meta"],"readwrite",(a,m)=>{a.put({id:r.id,data:r,photos:ph});m.put(meta)});
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  toast("Report saved on this phone");refreshSaved();
+ }catch(e){toast("Could not save this report on the phone. Share it now so it is not lost.")}
+}
+async function refreshSaved(){
+ try{metaCache=(await idbRun(["meta"],"readonly",m=>m.getAll())).sort((a,b)=>b.savedAt-a.savedAt)}catch(e){metaCache=[]}
+ $("svOpen").textContent="Saved reports"+(metaCache.length?" ("+metaCache.length+")":"");
+ renderSaved();
+}
+function renderSaved(){
+ const q=$("svq").value.trim().toLowerCase();
+ const l=metaCache.filter(m=>!q||(m.facility+" "+m.date+" "+m.tech).toLowerCase().includes(q));
+ $("svl").innerHTML=l.length?l.map(m=>`<div class="q"><button type="button" data-open="${m.id}" style="flex:1;text-align:left;border:0;background:none;color:var(--ink);font:inherit;padding:6px 0"><b>${esc(m.facility)}</b><br><small>${esc(m.date)} · ${esc(m.tech)}${m.photos?" · "+m.photos+" photo"+(m.photos>1?"s":""):""}</small></button><button type="button" class="btn alt" data-rdel="${m.id}" style="padding:6px 12px;font-size:14px">Delete</button></div>`).join(""):'<p class="hist">'+(metaCache.length?"No reports match your search.":"No saved reports yet. Reports are saved automatically when you compile them.")+'</p>';
+}
+async function openSaved(id){
+ try{const rec=await idbRun(["reports"],"readonly",r=>r.get(id));if(!rec){toast("Report not found");return}
+  current=rec.data;curPhotos=rec.photos||[];$("paper").innerHTML=paper(current);$("sv").classList.remove("open");show("saved")}
+ catch(e){toast("Could not open that report")}
+}
+$("svOpen").onclick=()=>{$("svq").value="";refreshSaved();$("sv").classList.add("open")};
+$("svX").onclick=()=>$("sv").classList.remove("open");
+$("svq").oninput=renderSaved;
+$("sv").onclick=async e=>{
+ if(e.target.id==="sv"){$("sv").classList.remove("open");return}
+ const o=e.target.closest("[data-open]");if(o){openSaved(Number(o.dataset.open));return}
+ const b=e.target.closest("[data-rdel]");if(!b)return;
+ if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Tap again";return}
+ try{await idbRun(["reports","meta"],"readwrite",(a,m)=>{a.delete(Number(b.dataset.rdel));m.delete(Number(b.dataset.rdel))})}catch(x){toast("Could not delete")}
+ refreshSaved();
+};
+function clearForm(){
+ ans.in={};ans.out={};document.querySelectorAll(".seg button").forEach(b=>b.classList.remove("on"));
+ document.querySelectorAll("#form input:not([type=file]):not([type=checkbox]),#form textarea").forEach(x=>x.value="");
+ document.querySelectorAll("#pests input").forEach(x=>x.checked=false);
+ $("client").value="";photos.length=0;thumbs();$("date").value=new Date().toISOString().slice(0,10);draftId=null;scrollTo(0,0);
+}
+$("newRep").onclick=()=>{const b=$("newRep");if(!b.dataset.arm){b.dataset.arm="1";b.textContent="Tap again to clear";setTimeout(()=>{delete b.dataset.arm;b.textContent="New report"},3000);return}delete b.dataset.arm;b.textContent="New report";clearForm();toast("Form cleared")};
+if(!window.indexedDB){$("svOpen").style.display="none"}else refreshSaved();
 </script>
 <script>if("serviceWorker"in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))</script>
 </body>
