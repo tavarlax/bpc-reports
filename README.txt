@@ -1,5 +1,6 @@
-BPC Sanitation Report - Android install package
-1. Upload ALL files in this folder to any HTTPS web host (Netlify, GitHub Pages, Cloudflare Pages, or your own site).
-2. On each Android phone, open the page in Chrome. Menu (three dots) > "Install app" (or "Add to Home screen").
+BPC Sanitation Report - Android / iPhone install package
+1. Upload ALL files in this folder to your HTTPS web host (GitHub Pages, Netlify, etc.), replacing the old files.
+2. Android: open the page in Chrome, Menu (three dots) > "Install app".  iPhone: open in Safari, Share > "Add to Home Screen".
 3. Open it once while online so it can store itself for offline use.
-When you change index.html, change V="bpc-v6" to "bpc-v7" in sw.js so phones pick up the update.
+Updating: upload the new files over the old ones. Phones pick up the change the next time the app is opened online.
+(If you ever edit the files yourself, change V="bpc-v7" at the top of sw.js to "bpc-v8".)
